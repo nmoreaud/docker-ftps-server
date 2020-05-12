@@ -1,8 +1,9 @@
 import os, random, string
 
 from pyftpdlib.authorizers import DummyAuthorizer
-from pyftpdlib.handlers import FTPHandler
+from pyftpdlib.handlers import FTPHandler, TLS_FTPHandler
 from pyftpdlib.servers import FTPServer
+import os.path
 
 
 length = 8
@@ -17,6 +18,8 @@ HOST =  os.getenv('HOST','0.0.0.0')
 PORT = 21
 PASSIVE_PORTS = '3000-3010'
 ANONYMOUS = os.getenv('ANONYMOUS', False)
+PROTOCOL = os.getenv('PROTOCOL', 'FTPS')
+CERTIFICATE_SUBJECT = "/C=UK/ST=Warwickshire/L=Leamington/O=OrgName/OU=IT Department/CN=example.com"
 
 def main():
     user_dir = os.path.join(FTP_ROOT, USER)
@@ -27,11 +30,20 @@ def main():
     if ANONYMOUS:
         authorizer.add_anonymous("/ftp_root/nobody")
 
-    handler = FTPHandler
+    generatedCertificate = False
+    if PROTOCOL == 'FTP':
+        handler = FTPHandler
+    else:
+        if not os.path.exists('./keycert.pem'):
+            generatedCertificate = True
+            os.system('openssl req -x509 -nodes -days 365 -newkey rsa:1024 -keyout keycert.pem -out keycert.pem -days 365 -subj "' + CERTIFICATE_SUBJECT + '"')
+        handler = TLS_FTPHandler
+        handler.certfile = 'keycert.pem'
+    
     handler.authorizer = authorizer
     handler.permit_foreign_addresses = True
 
-    passive_ports = map(int, PASSIVE_PORTS.split('-'))
+    passive_ports = list(map(int, PASSIVE_PORTS.split('-')))
     handler.passive_ports = range(passive_ports[0], passive_ports[1])
 
     print('*************************************************')
@@ -42,8 +54,10 @@ def main():
     print('*************************************************')
     print('SERVER SETTINGS')
     print('---------------')
-    print "FTP User: ",USER
-    print "FTP Password: ",PASSWORD
+    print("FTP User: ", USER)
+    print("FTP Password: ", PASSWORD)
+    if generatedCertificate:
+        print("Generated new SSL certificate !")
     server = FTPServer((HOST, PORT), handler)
     server.serve_forever()
     
